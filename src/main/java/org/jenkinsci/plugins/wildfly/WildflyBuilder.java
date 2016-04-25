@@ -32,6 +32,7 @@ import org.jenkinsci.remoting.RoleChecker;
 import hudson.Launcher;
 import hudson.Extension;
 import hudson.FilePath;
+import hudson.EnvVars;
 import hudson.util.FormValidation;
 import hudson.model.AbstractBuild;
 import hudson.FilePath.FileCallable;
@@ -102,7 +103,7 @@ public class WildflyBuilder extends Builder {
 
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
-    	    
+           	    
     	char[] passwordAsCharArray;
     	CLI.Result result;
     	String warPath, warFilename, response, localPath, remotePath;
@@ -127,15 +128,17 @@ public class WildflyBuilder extends Builder {
     			warPath = localPath;
     		} else 
     			warPath = remotePath;
+            
+            String expandedHost = expandHost(host, build, listener);
     		
         	CLI cli = CLI.newInstance();   
         	if (username.length() > 0) {
         		passwordAsCharArray = password.toCharArray();
-        		cli.connect(host, portAsInt, username, passwordAsCharArray);
+        		cli.connect(expandedHost, portAsInt, username, passwordAsCharArray);
         	} else
-        		cli.connect(host, portAsInt, null, null);
+        		cli.connect(expandedHost, portAsInt, null, null);
         	
-    		listener.getLogger().println("Connected to WildFly at "+host+":"+port); 		
+    		listener.getLogger().println("Connected to WildFly at "+expandedHost+":"+port); 		
     		
         	int idx=war.lastIndexOf("/");
         	if (idx > 0) {
@@ -214,6 +217,15 @@ public class WildflyBuilder extends Builder {
     	return response;
     }
     
+    private String expandHost(String host, AbstractBuild build, BuildListener listener) throws IOException, InterruptedException {
+        if (host.startsWith("$")) {
+            final EnvVars env = build.getEnvironment(listener);
+            return env.expand(host);
+        }
+
+        return host;
+    }
+       
     @Override
     public DescriptorImpl getDescriptor() {
         return (DescriptorImpl)super.getDescriptor();
