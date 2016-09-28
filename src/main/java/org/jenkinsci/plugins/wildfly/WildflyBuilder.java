@@ -32,6 +32,7 @@ import org.jenkinsci.remoting.RoleChecker;
 import hudson.Launcher;
 import hudson.Extension;
 import hudson.FilePath;
+import hudson.EnvVars;
 import hudson.util.FormValidation;
 import hudson.model.AbstractBuild;
 import hudson.FilePath.FileCallable;
@@ -102,7 +103,7 @@ public class WildflyBuilder extends Builder {
 
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
-    	    
+           	    
     	char[] passwordAsCharArray;
     	CLI.Result result;
     	String warPath, warFilename, response, localPath, remotePath;
@@ -110,45 +111,51 @@ public class WildflyBuilder extends Builder {
     	
     	try {
     		int portAsInt = Integer.parseInt(port);
+                
+                final String expandedWar = expandParameter(war, build, listener);                
     		   				    		
-    		FilePath fp = new FilePath(build.getWorkspace(), war);
+    		FilePath fp = new FilePath(build.getWorkspace(), expandedWar);
     		remotePath=fp.getRemote();
     		if (! fp.exists()) {
-    			listener.fatalError("The '"+war+"' file does not exist in workspace.");
+    			listener.fatalError("The '"+expandedWar+"' file does not exist in workspace.");
     			return false;
     		}	    			
     		 		
     		// if running on a remote slave, copy the WAR file to the master so CLI (which must run on the master) can access it
     		if (fp.isRemote()) {
     			localPath = Jenkins.getInstance().getWorkspaceFor((TopLevelItem)build.getProject().getRootProject()).getRemote();     		
-    			localPath=localPath.concat("/"+war);
+    			localPath=localPath.concat("/"+expandedWar);
     			localFP = new FilePath(new File(localPath));
     			fp.act(new GrabWARFile(localFP));
     			warPath = localPath;
     		} else 
     			warPath = remotePath;
+            
+                final String expandedHost = expandParameter(host, build, listener);
     		
         	CLI cli = CLI.newInstance();   
         	if (username.length() > 0) {
         		passwordAsCharArray = password.toCharArray();
-        		cli.connect(host, portAsInt, username, passwordAsCharArray);
+        		cli.connect(expandedHost, portAsInt, username, passwordAsCharArray);
         	} else
-        		cli.connect(host, portAsInt, null, null);
+        		cli.connect(expandedHost, portAsInt, null, null);
         	
-    		listener.getLogger().println("Connected to WildFly at "+host+":"+port); 		
+    		listener.getLogger().println("Connected to WildFly at "+expandedHost+":"+port); 		
     		
-        	int idx=war.lastIndexOf("/");
+        	int idx=expandedWar.lastIndexOf("/");
         	if (idx > 0) {
-        		warFilename = war.substring(idx+1, war.length());
+        		warFilename = expandedWar.substring(idx+1, expandedWar.length());
         	} else {
-        		warFilename = war;
+        		warFilename = expandedWar;
         	}
+                
+                final String expandedServer = expandParameter(server, build, listener);
         	
     		// if application exists, undeploy it first...
-    		if (applicationExists(cli, warFilename, server)) {
+    		if (applicationExists(cli, warFilename, expandedServer)) {
     			listener.getLogger().println("Application "+warFilename+" exists, undeploying...");
     			if (server.length() > 0)
-    				result = cli.cmd("undeploy "+warFilename+" --server-groups="+server);
+    				result = cli.cmd("undeploy "+warFilename+" --server-groups="+expandedServer);
     			else
     				result = cli.cmd("undeploy "+warFilename);
     			response = getWildFlyResponse(result);
@@ -161,7 +168,7 @@ public class WildflyBuilder extends Builder {
 
     		listener.getLogger().println("Deploying "+warFilename+" ...");
     		if (server.length() > 0)
-    			result = cli.cmd("deploy "+warPath+" --server-groups="+server);
+    			result = cli.cmd("deploy "+warPath+" --server-groups="+expandedServer);
     		else
     			result = cli.cmd("deploy "+warPath);
     		
@@ -214,6 +221,15 @@ public class WildflyBuilder extends Builder {
     	return response;
     }
     
+    private String expandParameter(String parameter, AbstractBuild build, BuildListener listener) throws IOException, InterruptedException {
+        if (parameter.indexOf('$') > -1) {
+            final EnvVars env = build.getEnvironment(listener);
+            return env.expand(parameter);
+        }
+
+        return parameter;
+    }
+       
     @Override
     public DescriptorImpl getDescriptor() {
         return (DescriptorImpl)super.getDescriptor();
