@@ -33,7 +33,7 @@ THE SOFTWARE.
   </parent>
   <groupId>org.jenkins-ci.plugins</groupId>
   <artifactId>wildfly-deployer</artifactId>
-  <version>1.0.3-SNAPSHOT</version>
+  <version>2.1</version>
   <packaging>hpi</packaging>
 
   <name>WildFly Deployer Plugin</name>
